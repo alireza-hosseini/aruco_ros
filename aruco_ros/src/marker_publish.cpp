@@ -46,6 +46,7 @@ or implied, of Rafael Muñoz Salinas.
 #include <aruco_msgs/MarkerArray.h>
 #include <tf/transform_listener.h>
 #include <std_msgs/UInt32MultiArray.h>
+#include <tf/transform_broadcaster.h>
 
 class ArucoMarkerPublisher
 {
@@ -72,8 +73,8 @@ private:
   ros::Publisher marker_pub_;
   ros::Publisher marker_list_pub_;
   tf::TransformListener tfListener_;
+  tf::TransformBroadcaster br_;
   tf::StampedTransform rightToLeft;
-
 
   ros::Subscriber cam_info_sub_;
   aruco_msgs::MarkerArray::Ptr marker_msg_;
@@ -122,6 +123,7 @@ public:
       nh_.param<bool>("image_is_rectified", useRectifiedImages_, true);
       nh_.param<std::string>("reference_frame", reference_frame_, "");
       nh_.param<std::string>("camera_frame", camera_frame_, "");
+      nh_.param<std::string>("marker_frame", marker_frame_, "");
       ROS_ASSERT(not camera_frame_.empty());
       if(reference_frame_.empty())
         reference_frame_ = camera_frame_;
@@ -246,6 +248,11 @@ public:
                   * transform;
               tf::poseTFToMsg(transform, marker_i.pose.pose);
               marker_i.header.frame_id = reference_frame_;
+
+              tf::StampedTransform stampedTransform(transform, curr_stamp,
+                                                    reference_frame_,
+                                                    marker_frame_);
+              br_.sendTransform(stampedTransform);
             }
           }
 
