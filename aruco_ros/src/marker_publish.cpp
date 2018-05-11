@@ -72,6 +72,8 @@ private:
   ros::Publisher marker_pub_;
   ros::Publisher marker_list_pub_;
   tf::TransformListener tfListener_;
+  tf::StampedTransform rightToLeft;
+
 
   ros::Subscriber cam_info_sub_;
   aruco_msgs::MarkerArray::Ptr marker_msg_;
@@ -85,6 +87,30 @@ public:
     , it_(nh_)
     , useCamInfo_(true)
   {
+
+    std::string refinementMethod;
+    nh_.param<std::string>("corner_refinement", refinementMethod, "LINES");
+    if ( refinementMethod == "SUBPIX" )
+      mDetector_.setCornerRefinementMethod(aruco::MarkerDetector::SUBPIX);
+    else if ( refinementMethod == "HARRIS" )
+      mDetector_.setCornerRefinementMethod(aruco::MarkerDetector::HARRIS);
+    else if ( refinementMethod == "NONE" )
+      mDetector_.setCornerRefinementMethod(aruco::MarkerDetector::NONE);
+    else
+      mDetector_.setCornerRefinementMethod(aruco::MarkerDetector::LINES);
+
+    //Print parameters of aruco marker detector:
+    ROS_INFO_STREAM("Corner refinement method: " << mDetector_.getCornerRefinementMethod());
+    ROS_INFO_STREAM("Threshold method: " << mDetector_.getThresholdMethod());
+    double th1, th2;
+    mDetector_.getThresholdParams(th1, th2);
+    ROS_INFO_STREAM("Threshold method: " << " th1: " << th1 << " th2: " << th2);
+    float mins, maxs;
+    mDetector_.getMinMaxSize(mins, maxs);
+    ROS_INFO_STREAM("Marker size min: " << mins << "  max: " << maxs);
+    ROS_INFO_STREAM("Desired speed: " << mDetector_.getDesiredSpeed());
+
+
     image_sub_ = it_.subscribe("/image", 1, &ArucoMarkerPublisher::image_callback, this);
 
     nh_.param<bool>("use_camera_info", useCamInfo_, true);
@@ -99,6 +125,13 @@ public:
       ROS_ASSERT(not camera_frame_.empty());
       if(reference_frame_.empty())
         reference_frame_ = camera_frame_;
+
+      rightToLeft.setIdentity();
+      rightToLeft.setOrigin(
+        tf::Vector3(
+          -msg->P[3]/msg->P[0],
+          -msg->P[7]/msg->P[5],
+          0.0));
     }
     else
     {
@@ -207,7 +240,10 @@ public:
             {
               aruco_msgs::Marker & marker_i = marker_msg_->markers.at(i);
               tf::Transform transform = aruco_ros::arucoMarker2Tf(markers_[i]);
-              transform = static_cast<tf::Transform>(cameraToReference) * transform;
+              transform =
+                static_cast<tf::Transform>(cameraToReference)
+                  * static_cast<tf::Transform>(rightToLeft)
+                  * transform;
               tf::poseTFToMsg(transform, marker_i.pose.pose);
               marker_i.header.frame_id = reference_frame_;
             }
